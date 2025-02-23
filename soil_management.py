@@ -1,7 +1,11 @@
 import mysql.connector
-import streamlit as st
+import random
+from faker import Faker
 from datetime import datetime
 import pandas as pd
+
+# Initialize Faker for generating random data
+fake = Faker()
 
 # MySQL Database Connection Details
 DB_CONFIG = {
@@ -11,78 +15,103 @@ DB_CONFIG = {
     "database": "soil_management"
 }
 
-# Streamlit Page Configurations
-st.set_page_config(page_title="🌱 Soil Health Management", layout="wide")
-
 # Database Connection Function
 def connect_db():
     try:
-        return mysql.connector.connect(**DB_CONFIG)
+        conn = mysql.connector.connect(**DB_CONFIG)
+        return conn
     except mysql.connector.Error as e:
-        st.error(f"❌ Database Connection Error: {e}")
+        print(f"Error connecting to database: {e}")
         return None
 
-# Insert Record Function
-def insert_record(farm_location, test_date, nitrogen, phosphorus, potassium, pH, moisture):
+# Function to Insert Manual Soil Record
+def insert_manual_record(farm_location, test_date, nitrogen, phosphorus, potassium, pH, moisture):
     conn = connect_db()
     if conn:
+        cursor = conn.cursor()
         try:
-            cursor = conn.cursor()
-            query = """
-                INSERT INTO soil_health (farm_location, test_date, nitrogen_level, phosphorus_level, 
-                potassium_level, pH_level, moisture_content)
+            cursor.execute("""
+                INSERT INTO soil_health (farm_location, test_date, nitrogen_level, phosphorus_level, potassium_level, pH_level, moisture_content)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """
-            cursor.execute(query, (farm_location, test_date, nitrogen, phosphorus, potassium, pH, moisture))
+            """, (farm_location, test_date, nitrogen, phosphorus, potassium, pH, moisture))
             conn.commit()
-            st.success("✅ Record inserted successfully!")
+            print("Soil record inserted successfully!")
         except mysql.connector.Error as e:
-            st.error(f"❌ Insertion Error: {e}")
+            print(f"Error inserting record: {e}")
         finally:
             conn.close()
 
-# Display Records Function
-def fetch_records(limit=None):
+# Function to Generate Random Data for Bulk Insert
+def generate_soil_data():
+    return (
+        fake.city(),
+        fake.date_between(start_date="-2y", end_date="today"),
+        round(random.uniform(0.1, 5.0), 2),
+        round(random.uniform(0.1, 5.0), 2),
+        round(random.uniform(0.1, 5.0), 2),
+        round(random.uniform(4.5, 8.5), 2),
+        round(random.uniform(5.0, 50.0), 2)
+    )
+
+# Function to Insert Bulk Records
+def insert_bulk_records(total_records, batch_size=1000):
     conn = connect_db()
     if conn:
-        try:
-            cursor = conn.cursor()
-            query = "SELECT * FROM soil_health ORDER BY record_no DESC"
-            if limit:
-                query += f" LIMIT {limit}"
-            cursor.execute(query)
-            rows = cursor.fetchall()
-            df = pd.DataFrame(rows, columns=["Record No", "Farm Location", "Test Date", "Nitrogen", "Phosphorus", "Potassium", "pH", "Moisture"])
-            return df
-        except mysql.connector.Error as e:
-            st.error(f"❌ Fetch Error: {e}")
-        finally:
-            conn.close()
-    return pd.DataFrame()
+        cursor = conn.cursor()
+        for _ in range(0, total_records, batch_size):
+            data_batch = [generate_soil_data() for _ in range(min(batch_size, total_records))]
+            cursor.executemany("""
+                INSERT INTO soil_health (farm_location, test_date, nitrogen_level, phosphorus_level, potassium_level, pH_level, moisture_content)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, data_batch)
+            conn.commit()
+        print(f"{total_records} records inserted successfully!")
+        conn.close()
 
-# Streamlit UI
-tab1, tab2 = st.tabs(["➕ Add Record", "📊 View Records"])
+# Function to Display Records
+def display_records(limit=None):
+    conn = connect_db()
+    if conn:
+        cursor = conn.cursor()
+        query = "SELECT * FROM soil_health ORDER BY record_no DESC"
+        if limit:
+            query += f" LIMIT {limit}"
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        conn.close()
+        df = pd.DataFrame(rows, columns=["Record No", "Farm Location", "Test Date", "Nitrogen", "Phosphorus", "Potassium", "pH", "Moisture"])
+        print(df)
 
-# Insert Record Section
-with tab1:
-    st.subheader("📝 Enter Soil Data")
-    farm_location = st.text_input("🏡 Farm Location")
-    test_date = st.date_input("📅 Test Date", datetime.today())
-    nitrogen = st.number_input("🌱 Nitrogen (mg/kg)", min_value=0.0, format="%.2f")
-    phosphorus = st.number_input("🔬 Phosphorus (mg/kg)", min_value=0.0, format="%.2f")
-    potassium = st.number_input("🧪 Potassium (mg/kg)", min_value=0.0, format="%.2f")
-    pH = st.number_input("⚖ pH Level", min_value=0.0, max_value=14.0, format="%.2f")
-    moisture = st.number_input("💧 Moisture Content (%)", min_value=0.0, max_value=100.0, format="%.2f")
-    
-    if st.button("🚀 Insert Record"):
-        if farm_location:
-            insert_record(farm_location, test_date, nitrogen, phosphorus, potassium, pH, moisture)
+if __name__ == "__main__":
+    while True:
+        print("\nSoil Management System")
+        print("1. Insert Manual Record")
+        print("2. Insert Bulk Records")
+        print("3. Display Records")
+        print("4. Exit")
+        choice = input("Enter your choice: ")
+        
+        if choice == "1":
+            farm_location = input("Enter Farm Location: ")
+            test_date = input("Enter Test Date (YYYY-MM-DD): ")
+            nitrogen = float(input("Enter Nitrogen Level (mg/kg): "))
+            phosphorus = float(input("Enter Phosphorus Level (mg/kg): "))
+            potassium = float(input("Enter Potassium Level (mg/kg): "))
+            pH = float(input("Enter pH Level: "))
+            moisture = float(input("Enter Moisture Content (%): "))
+            insert_manual_record(farm_location, test_date, nitrogen, phosphorus, potassium, pH, moisture)
+        
+        elif choice == "2":
+            total_records = int(input("Enter the number of records to insert: "))
+            insert_bulk_records(total_records)
+        
+        elif choice == "3":
+            limit = input("Enter the number of records to display (or press Enter for all): ")
+            limit = int(limit) if limit.isdigit() else None
+            display_records(limit)
+        
+        elif choice == "4":
+            print("Exiting...\n")
+            break
         else:
-            st.warning("⚠ Please enter the farm location.")
-
-# Display Records Section
-with tab2:
-    st.subheader("📊 Soil Health Records")
-    limit = st.selectbox("🔍 Show last N records", [10, 50, 100, 200, "All"], index=2)
-    records = fetch_records(None if limit == "All" else limit)
-    st.dataframe(records, use_container_width=True)
+            print("Invalid choice. Please try again.")

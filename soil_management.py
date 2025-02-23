@@ -1,7 +1,8 @@
 import mysql.connector
+import streamlit as st
 import random
 from faker import Faker
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 
 # Initialize Faker for generating random data
@@ -11,9 +12,17 @@ fake = Faker()
 DB_CONFIG = {
     "host": "localhost",
     "user": "root",
-    "password": "vedant",
+    "password": "9822",
     "database": "soil_management"
 }
+
+# Initialize Streamlit state for messages
+if 'messages' not in st.session_state:
+    st.session_state['messages'] = []
+
+# Function to add a message
+def add_message(message, msg_type="success"):
+    st.session_state['messages'] = [(msg_type, message)]  # Keep only the last message
 
 # Database Connection Function
 def connect_db():
@@ -21,7 +30,7 @@ def connect_db():
         conn = mysql.connector.connect(**DB_CONFIG)
         return conn
     except mysql.connector.Error as e:
-        print(f"Error connecting to database: {e}")
+        add_message(f"Error connecting to database: {e}", "error")
         return None
 
 # Function to Insert Manual Soil Record
@@ -29,15 +38,18 @@ def insert_manual_record(farm_location, test_date, nitrogen, phosphorus, potassi
     conn = connect_db()
     if conn:
         cursor = conn.cursor()
+        if not farm_location:
+            add_message("Farm Location field must be filled!", "warning")
+            return
         try:
             cursor.execute("""
                 INSERT INTO soil_health (farm_location, test_date, nitrogen_level, phosphorus_level, potassium_level, pH_level, moisture_content)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
             """, (farm_location, test_date, nitrogen, phosphorus, potassium, pH, moisture))
             conn.commit()
-            print("Soil record inserted successfully!")
+            add_message("Soil record inserted successfully!", "success")
         except mysql.connector.Error as e:
-            print(f"Error inserting record: {e}")
+            add_message(f"Error inserting record: {e}", "error")
         finally:
             conn.close()
 
@@ -54,19 +66,20 @@ def generate_soil_data():
     )
 
 # Function to Insert Bulk Records
-def insert_bulk_records(total_records, batch_size=1000):
+def insert_bulk_records(total_records, batch_size):
     conn = connect_db()
     if conn:
         cursor = conn.cursor()
         for _ in range(0, total_records, batch_size):
-            data_batch = [generate_soil_data() for _ in range(min(batch_size, total_records))]
+            data_batch = [generate_soil_data() for _ in range(batch_size)]
             cursor.executemany("""
                 INSERT INTO soil_health (farm_location, test_date, nitrogen_level, phosphorus_level, potassium_level, pH_level, moisture_content)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
             """, data_batch)
             conn.commit()
-        print(f"{total_records} records inserted successfully!")
+        add_message(f"{total_records} records inserted successfully!", "success")
         conn.close()
+        st.rerun()
 
 # Function to Display Records
 def display_records(limit=None):
@@ -79,39 +92,69 @@ def display_records(limit=None):
         cursor.execute(query)
         rows = cursor.fetchall()
         conn.close()
-        df = pd.DataFrame(rows, columns=["Record No", "Farm Location", "Test Date", "Nitrogen", "Phosphorus", "Potassium", "pH", "Moisture"])
-        print(df)
+        df = pd.DataFrame(rows, columns=["Record No", "Farm Location", "Test Date", "Nitrogen Level", "Phosphorus Level", "Potassium Level", "pH Level", "Moisture Content"])
+        st.dataframe(df, height=564, use_container_width=True)
 
-if __name__ == "__main__":
-    while True:
-        print("\nSoil Management System")
-        print("1. Insert Manual Record")
-        print("2. Insert Bulk Records")
-        print("3. Display Records")
-        print("4. Exit")
-        choice = input("Enter your choice: ")
-        
-        if choice == "1":
-            farm_location = input("Enter Farm Location: ")
-            test_date = input("Enter Test Date (YYYY-MM-DD): ")
-            nitrogen = float(input("Enter Nitrogen Level (mg/kg): "))
-            phosphorus = float(input("Enter Phosphorus Level (mg/kg): "))
-            potassium = float(input("Enter Potassium Level (mg/kg): "))
-            pH = float(input("Enter pH Level: "))
-            moisture = float(input("Enter Moisture Content (%): "))
-            insert_manual_record(farm_location, test_date, nitrogen, phosphorus, potassium, pH, moisture)
-        
-        elif choice == "2":
-            total_records = int(input("Enter the number of records to insert: "))
-            insert_bulk_records(total_records)
-        
-        elif choice == "3":
-            limit = input("Enter the number of records to display (or press Enter for all): ")
-            limit = int(limit) if limit.isdigit() else None
-            display_records(limit)
-        
-        elif choice == "4":
-            print("Exiting...\n")
-            break
+# Streamlit GUI Setup
+st.set_page_config(layout="wide")
+st.title("🌱 Soil Management System")
+
+conn = connect_db()
+if conn:
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS soil_health (
+                record_no INT AUTO_INCREMENT PRIMARY KEY,
+                farm_location VARCHAR(255) NOT NULL,
+                test_date DATE,
+                nitrogen_level FLOAT,
+                phosphorus_level FLOAT,
+                potassium_level FLOAT,
+                pH_level FLOAT,
+                moisture_content FLOAT
+            );
+        """)
+        conn.commit()
+    finally:
+        cursor.close()
+        conn.close()
+
+# Create two columns
+col1, col2 = st.columns([1, 2])
+
+with col1:
+    st.header("📝 Input Data")
+    farm_location = st.text_input("Farm Location")
+    test_date = st.date_input("Test Date")
+    nitrogen = st.number_input("Nitrogen Level (mg/kg)", format="%.4f")
+    phosphorus = st.number_input("Phosphorus Level (mg/kg)", format="%.4f")
+    potassium = st.number_input("Potassium Level (mg/kg)", format="%.4f")
+    pH = st.number_input("pH Level", format="%.4f")
+    moisture = st.number_input("Moisture Content (%)", format="%.4f")
+    
+    if st.button("Insert Record"):
+        insert_manual_record(farm_location, test_date, nitrogen, phosphorus, potassium, pH, moisture)
+    
+    st.subheader("📢 Messages")
+    if st.session_state['messages']:
+        msg_type, msg = st.session_state['messages'][0]
+        if msg_type == "success":
+            st.success(msg)
+        elif msg_type == "error":
+            st.error(msg)
+        elif msg_type == "warning":
+            st.warning(msg)
         else:
-            print("Invalid choice. Please try again.")
+            st.info(msg)
+
+with col2:
+    st.header("📊 Last Records")
+    limit = st.selectbox("Select Limit for Table", [10, 50, 100, 200, 500], index=2)
+    bulk_quantity = st.selectbox("Select Bulk Quantity", [10, 50, 100, 500, 1000, 10000])
+    
+    if st.button("Insert Bulk Records"):
+        batch_size = min(bulk_quantity, 10000)
+        insert_bulk_records(bulk_quantity, batch_size)
+    
+    display_records(limit=limit)

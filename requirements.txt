@@ -1,10 +1,8 @@
-streamlit
 mysql-connector-python
+streamlit
 pandas
 faker
 
 git add requirements.txt
-git commit -m "Added requirements.txt for dependencies"
+git commit -m "Added mysql-connector-python to fix missing module"
 git push origin main
-
-pip install --upgrade pip

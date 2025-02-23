@@ -1,8 +1,0 @@
-mysql-connector-python
-streamlit
-pandas
-faker
-
-git add requirements.txt
-git commit -m "Added mysql-connector-python to fix missing module"
-git push origin main

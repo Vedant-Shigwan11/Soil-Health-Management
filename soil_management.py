@@ -12,7 +12,7 @@ fake = Faker()
 DB_CONFIG = {
     "host": "localhost",
     "user": "root",
-    "password": "9822",
+    "password": "vedant",
     "database": "soil_management"
 }
 

@@ -31,6 +31,3 @@ The **Soil Health Management System** is a **GUI-based application** built using
    ```
 3. Ensure MySQL is running and properly configured with the given credentials.  
 
----
-
-This should give a clear idea of what the project does. Let me know if you need any modifications! 🚀📖
